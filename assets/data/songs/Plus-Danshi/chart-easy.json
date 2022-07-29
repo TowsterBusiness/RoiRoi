@@ -1,0 +1,135 @@
+{
+    "author": [
+        "Giga",
+        "Reol"
+    ],
+    "charter": [
+        "Towster"
+    ],
+    "bpmList": [
+        {
+            "bpm": 108,
+            "time": 0
+        },
+        {
+            "bpm": 108,
+            "time": 300
+        },
+        {
+            "bpm": 108,
+            "time": 400
+        }
+    ],
+    "chart": [
+        {
+            "note": 0,
+            "time": 1000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 1,
+            "time": 2000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 2,
+            "time": 1000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 3,
+            "time": 1000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 4,
+            "time": 1000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 5,
+            "time": 1000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 0,
+            "time": 2000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 1,
+            "time": 11000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 0,
+            "time": 13000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        },
+        {
+            "note": 0,
+            "time": 16000,
+            "position": [
+                0,
+                0
+            ],
+            "sliderPoints": [
+                0
+            ]
+        }
+    ]
+}
