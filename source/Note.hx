@@ -1,22 +1,37 @@
 package;
 
+import flixel.addons.display.shapes.FlxShapeLine;
+import JsonTypes;
 import flixel.FlxSprite;
+import flixel.math.FlxPoint;
 import towsterFlxUtil.*;
 
 class Note extends FlxSprite
 {
-	var doorPosList = [[0.5, 0.6], [0.5, 0.5], [0.5, 0.4], [0.5, 0.6], [0.5, 0.5], [0.48, 0.4]];
-
-	public var noteType:Int;
+	public var type:Int;
+	public var holdLength:Int;
 	public var time:Int;
+	public var position:Array<Int>;
 	public var sliderPoints:Array<Int>;
 
-	public function new(noteType:Int = 0, time:Int = 0, sliderPoints:Array<Int>, position:Array<Int>)
+	public var dead:Bool = false;
+
+	public var holdEndPointer:Note;
+	public var holdLinePointer:HoldLines;
+
+	public var isHold:Bool;
+	public var isHeld:Bool = false;
+	public var holdFailed:Int = 0;
+
+	public function new(noteJson:NoteJson, ?isHold:Bool = false, ?sectionGraphicSize:Int = 50)
 	{
-		this.noteType = noteType;
-		this.time = time;
-		this.sliderPoints = sliderPoints;
-		alpha = 0;
+		type = noteJson.type;
+		holdLength = noteJson.holdLength;
+		time = noteJson.time;
+		position = noteJson.position;
+		sliderPoints = noteJson.sliderPoints;
+
+		this.isHold = isHold;
 
 		super(0, 0);
 
@@ -24,20 +39,48 @@ class Note extends FlxSprite
 		setGraphicSize(Math.floor(Utils.percentFromHeight(0.15)), Math.floor(Utils.percentFromHeight(0.15)));
 		updateHitbox();
 
-		if (position[0] != 0 && position[1] != 0)
+		if (!isHold && holdLength > 0)
 		{
-			x = position[0];
-			y = position[1];
+			var tempNoteEnd:Note = new Note(noteJson, true);
+			tempNoteEnd.time += noteJson.holdLength;
+			tempNoteEnd.holdLength = 0;
+			holdEndPointer = tempNoteEnd;
+
+			var tempSprite = new FlxSprite(0, 0).loadGraphic(Paths.getFilePath('images/circle', PNG));
+			tempSprite.setGraphicSize(sectionGraphicSize, sectionGraphicSize);
+			tempSprite.updateHitbox();
+
+			var tempNoteLine = new HoldLines(new FlxPoint(0, 0), new FlxPoint(0, 0), tempSprite, 70);
+			holdLinePointer = tempNoteLine;
 		}
-		else if (noteType < 6)
+	}
+
+	public function updateLine()
+	{
+		if (holdLength <= 0)
 		{
-			x = Utils.percentFromHeight(doorPosList[noteType][0] + 0.075);
-			y = Utils.percentFromHeight(doorPosList[noteType][1] - 0.075);
+			trace('only update this when note it a long note please');
+			return;
 		}
-		else
-		{
-			x = 0;
-			y = 0;
-		}
+		holdLinePointer.point.set(x + width / 2, y + height / 2);
+		holdLinePointer.point2.set(holdEndPointer.x - 30 + holdEndPointer.width / 2, holdEndPointer.y + holdEndPointer.height / 2);
+	}
+
+	override function kill()
+	{
+		super.kill();
+		if (isHold || holdLength == 0)
+			return;
+		holdEndPointer.kill();
+		holdLinePointer.kill();
+	}
+
+	override function revive()
+	{
+		super.revive();
+		if (isHold || holdLength == 0)
+			return;
+		holdEndPointer.revive();
+		holdLinePointer.revive();
 	}
 }

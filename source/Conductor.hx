@@ -6,7 +6,7 @@ import haxe.Timer;
 class Conductor
 {
 	var BPMList:Array<BPMJson>;
-	var currentBPM:Int;
+	var currentBPM:Float;
 	var currentBPM_Time:Int;
 	var lastBPMCheck:Int = 0;
 
@@ -18,7 +18,7 @@ class Conductor
 
 	public function new(bpmList:Array<BPMJson>)
 	{
-		startTime = Math.floor(Timer.stamp() * 1000);
+		startTime = Math.floor(Timer.stamp() * 1000) ;
 		this.currentBPM = bpmList[0].bpm;
 	}
 

@@ -1,5 +1,8 @@
 package;
 
+import flixel.math.FlxPoint;
+import flixel.addons.plugin.FlxMouseControl;
+import flixel.addons.display.shapes.FlxShapeLine;
 import Conductor;
 import JsonTypes;
 import Note;
@@ -27,6 +30,9 @@ class PlayState extends FlxState
 	var activeNotes:FlxTypedSpriteGroup<Note>;
 	var inputCircles:FlxTypedSpriteGroup<FlxSprite>;
 
+	var noteHoldEnds:FlxTypedSpriteGroup<Note>;
+	var noteHoldLines:FlxTypedSpriteGroup<HoldLines>;
+
 	var songJson:ChartJson;
 
 	var conductor:Conductor;
@@ -40,7 +46,6 @@ class PlayState extends FlxState
 	var combo:Int = 0;
 	var comboBoard:FlxText;
 
-	// reminder, I copied this into Note.hx as a place holder put i need to make a json for this later.
 	public var inputCirclePosList = [
 		[0.125, 0.125],
 		[0.075, 0.425],
@@ -95,14 +100,25 @@ class PlayState extends FlxState
 			inputCircles.add(circle);
 		}
 
+		noteHoldEnds = new FlxTypedSpriteGroup(0, 0, 999);
+		add(noteHoldEnds);
+
 		activeNotes = new FlxTypedSpriteGroup(0, 0, 99999);
 		add(activeNotes);
+
+		noteHoldLines = new FlxTypedSpriteGroup(0, 0, 999);
+		add(noteHoldLines);
 
 		super.create();
 	}
 
 	override public function update(elapsed:Float)
 	{
+		if (FlxG.keys.justPressed.NINE)
+		{
+			FlxG.switchState(new PlayState());
+		}
+
 		reOrganizeNotes();
 
 		for (keyIndex in 0...keyBinds.length)
@@ -111,24 +127,38 @@ class PlayState extends FlxState
 			{
 				inputPressed(keyIndex);
 			}
-		}
-		for (keyIndex in 0...keyBinds.length)
-		{
 			if (FlxG.keys.checkStatus(keyBinds[keyIndex], JUST_RELEASED))
 			{
-				inputCircles.members[keyIndex].setGraphicSize(Math.floor(MyUtils.percentFromHeight(0.15)), Math.floor(MyUtils.percentFromHeight(0.15)));
+				inputReleased(keyIndex);
 			}
 		}
 
 		activeNotes.forEachAlive(function(activeNote)
 		{
-			var noteFromAlphaStart = conductor.getMil() - (activeNote.time - noteLoadSpeed - scrollSpeed);
-			var noteFromMoveStart = conductor.getMil() - (activeNote.time - scrollSpeed);
-			activeNote.alpha = noteFromAlphaStart / noteLoadSpeed;
-			activeNote.x = Utils.percentFromWidth(doorPosList[activeNote.noteType][0]
-				+ (noteFromMoveStart / scrollSpeed) * (inputCirclePosList[activeNote.noteType][0] - doorPosList[activeNote.noteType][0]));
-			activeNote.y = Utils.percentFromHeight(doorPosList[activeNote.noteType][1]
-				+ (noteFromMoveStart / scrollSpeed) * (inputCirclePosList[activeNote.noteType][1] - doorPosList[activeNote.noteType][1]));
+			if (activeNote.holdLength == 0)
+			{
+				moveNote(activeNote);
+			}
+			else
+			{
+				if (activeNote.holdFailed != 0)
+					moveNote(activeNote, activeNote.holdFailed - activeNote.time);
+				else
+					moveNote(activeNote);
+
+				moveNote(activeNote.holdEndPointer);
+				activeNote.holdLinePointer.point.set(activeNote.x + activeNote.width / 2, activeNote.y + activeNote.width / 2);
+				activeNote.holdLinePointer.point2.set(activeNote.holdEndPointer.x + activeNote.holdEndPointer.width / 2,
+					activeNote.holdEndPointer.y + activeNote.holdEndPointer.height / 2);
+			}
+
+			if (conductor.getMil() - noteAccuracyList[noteAccuracyList.length - 1] > activeNote.time
+				&& !activeNote.dead
+				&& !activeNote.isHeld)
+			{
+				killCombo();
+				activeNote.dead = true;
+			}
 		});
 
 		super.update(elapsed);
@@ -137,22 +167,56 @@ class PlayState extends FlxState
 	function inputPressed(keyNum:Int)
 	{
 		inputCircles.members[keyNum].setGraphicSize(Math.floor(MyUtils.percentFromHeight(0.16)), Math.floor(MyUtils.percentFromHeight(0.16)));
-		// Please only put this in the end
+
 		activeNotes.forEachAlive(function(activeNote)
 		{
-			var noteAcc = noteAccuracyCalculator(activeNote);
-			if (noteAcc == noteAccuracyList.length)
+			var noteAcc = noteRater(activeNote);
+
+			if (activeNote.type != keyNum || noteAcc == noteAccuracyList.length)
 				return;
-			activeNote.kill();
-			addCombo();
-			addScore(100);
+
+			raterActions(noteAcc);
+			if (activeNote.holdLength == 0)
+			{
+				activeNote.kill();
+			}
+			else if (activeNote.holdFailed == 0)
+			{
+				activeNote.isHeld = true;
+				activeNote.dead = true;
+			}
 		});
 	}
 
-	// Wonderful, Perfect, Good, Eh, Smh
-	public var noteAccuracyList:Array<Int> = [10, 20, 50, 100];
+	function inputReleased(keyNum:Int)
+	{
+		inputCircles.members[keyNum].setGraphicSize(Math.floor(MyUtils.percentFromHeight(0.15)), Math.floor(MyUtils.percentFromHeight(0.15)));
 
-	public function noteAccuracyCalculator(note:Note):Int
+		activeNotes.forEachAlive(function(activeNote)
+		{
+			if (activeNote.holdLength == 0 || keyNum != activeNote.type || !activeNote.isHeld)
+				return;
+
+			var endNote = activeNote.holdEndPointer;
+			var holdAcc = noteRater(endNote);
+
+			if (holdAcc == noteAccuracyList.length)
+			{
+				activeNote.isHeld = false;
+				activeNote.holdFailed = conductor.getMil();
+			}
+			else
+			{
+				raterActions(holdAcc, false);
+				activeNote.kill();
+			}
+		});
+	}
+
+	// Wonderful, Perfect, Good, Eh, Smh, OOF
+	public var noteAccuracyList:Array<Int> = [10, 20, 50, 180, 200];
+
+	function noteRater(note:Note):Int
 	{
 		var offset = Math.abs(conductor.getMil() - note.time);
 		for (noteAccInx in 0...noteAccuracyList.length)
@@ -160,7 +224,22 @@ class PlayState extends FlxState
 			if (offset < noteAccuracyList[noteAccInx])
 				return noteAccInx;
 		}
+
 		return noteAccuracyList.length;
+	}
+
+	function raterActions(rating:Int, killCombos:Bool = true)
+	{
+		trace(rating);
+		switch (rating)
+		{
+			case 4:
+				if (killCombos)
+					killCombo();
+			default:
+				addCombo();
+				addScore(100);
+		}
 	}
 
 	function addCombo()
@@ -173,6 +252,16 @@ class PlayState extends FlxState
 		FlxTween.tween(comboBoard.scale, {x: 1, y: 1}, 0.2, {ease: FlxEase.backOut});
 	}
 
+	function killCombo()
+	{
+		combo = 0;
+		comboBoard.text = '0x';
+		comboBoard.screenCenter(XY);
+		comboBoard.angle = Math.random() * 20 - 10;
+		comboBoard.scale.set(0.6, 0.6);
+		FlxTween.tween(comboBoard.scale, {x: 1, y: 1}, 0.2, {ease: FlxEase.backOut});
+	}
+
 	function addScore(amount:Int)
 	{
 		score += amount * combo;
@@ -182,22 +271,49 @@ class PlayState extends FlxState
 	function reOrganizeNotes()
 	{
 		var lastNoteAdded_Time:Int = 0;
+
+		var milTillKill:Int = 2000;
 		activeNotes.forEach(function(a)
 		{
 			if (a.time > lastNoteAdded_Time)
 			{
 				lastNoteAdded_Time = a.time;
 			}
+
+			if ((a.holdLength == 0 && a.time < conductor.getMil() - milTillKill)
+				|| (a.holdLength > 0 && a.holdEndPointer.time < conductor.getMil() - milTillKill))
+			{
+				a.kill();
+			}
 		});
+
 		for (note in songJson.chart)
 		{
 			if (note.time < conductor.getMil() + scrollSpeed + 1000
 				&& note.time > conductor.getMil() - scrollSpeed - 1000
 				&& note.time > lastNoteAdded_Time)
 			{
-				activeNotes.add(new Note(note.note, note.time, note.sliderPoints, note.position));
+				var noteToAdd = new Note(note);
+				activeNotes.add(noteToAdd);
+
+				if (note.holdLength > 0)
+				{
+					noteHoldEnds.add(noteToAdd.holdEndPointer);
+					noteHoldLines.add(noteToAdd.holdLinePointer);
+				}
 			}
 		}
+	}
+
+	function moveNote(note:Note, ?visualOffset:Int)
+	{
+		var noteFromAlphaStart = conductor.getMil() - (note.time - noteLoadSpeed - scrollSpeed - visualOffset);
+		var noteFromMoveStart = conductor.getMil() - (note.time - scrollSpeed - visualOffset);
+		note.alpha = noteFromAlphaStart / noteLoadSpeed;
+		note.x = Utils.percentFromWidth(doorPosList[note.type][0]
+			+ (noteFromMoveStart / scrollSpeed) * (inputCirclePosList[note.type][0] - doorPosList[note.type][0]));
+		note.y = Utils.percentFromHeight(doorPosList[note.type][1]
+			+ (noteFromMoveStart / scrollSpeed) * (inputCirclePosList[note.type][1] - doorPosList[note.type][1]));
 	}
 
 	override function onFocusLost()

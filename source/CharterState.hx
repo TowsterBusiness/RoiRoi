@@ -17,6 +17,11 @@ class CharterState extends FlxState
 	var songJson:ChartJson;
 
 	var activeNotes:FlxTypedSpriteGroup<Note>;
+	var activeNoteLines:FlxTypedSpriteGroup<HoldLines>;
+	var activeNoteEnds:FlxTypedSpriteGroup<Note>;
+
+	var ghostNote:FlxSprite;
+
 	var inputCircles:FlxTypedSpriteGroup<FlxSprite>;
 
 	var beatBars:FlxTypedSpriteGroup<FlxShapeLine>;
@@ -30,6 +35,9 @@ class CharterState extends FlxState
 
 	var isWheelMoving:Bool = false;
 	var wheelScrollSpd:Float = 3;
+
+	var selectedNoteJson:NoteJson = null;
+	var isHeld = false;
 
 	override function create()
 	{
@@ -58,8 +66,20 @@ class CharterState extends FlxState
 		beatBars = new FlxTypedSpriteGroup(30, 0, 30);
 		add(beatBars);
 
+		activeNoteLines = new FlxTypedSpriteGroup(30, 0, 99999);
+		add(activeNoteLines);
+
 		activeNotes = new FlxTypedSpriteGroup(30, 0, 99999);
 		add(activeNotes);
+
+		activeNoteEnds = new FlxTypedSpriteGroup(30, 0, 99999);
+		add(activeNoteEnds);
+
+		ghostNote = new FlxSprite(0, 0).loadGraphic(Paths.getFilePath('images/circle', PNG));
+		ghostNote.alpha = 0.7;
+		ghostNote.setGraphicSize(inputSize, inputSize);
+		ghostNote.updateHitbox();
+		add(ghostNote);
 
 		organizeNotes();
 		reloadBeatBars();
@@ -68,6 +88,9 @@ class CharterState extends FlxState
 	override function update(elapsed:Float)
 	{
 		super.update(elapsed);
+
+		var typeOnMouse = Math.floor((FlxG.mouse.x - inputCircles.x + spaceBtwInputs / 2) / (inputSize + spaceBtwInputs));
+		var timeOnMouse = Math.floor(yPosToTime(FlxG.mouse.y));
 
 		if (FlxG.mouse.wheel != 0 && mil >= 0)
 		{
@@ -79,12 +102,21 @@ class CharterState extends FlxState
 			{
 				note.y += FlxG.mouse.wheel * wheelScrollSpd;
 			});
+			activeNoteEnds.forEachAlive(function(note)
+			{
+				note.y += FlxG.mouse.wheel * wheelScrollSpd;
+			});
+			activeNoteLines.forEachAlive(function(line)
+			{
+				line.y += FlxG.mouse.wheel * wheelScrollSpd;
+			});
 			beatBars.forEachAlive(function(bar)
 			{
 				bar.y += FlxG.mouse.wheel * wheelScrollSpd;
 			});
 		}
-		else if (mil < 0)
+
+		if (mil < 0)
 		{
 			mil = 0;
 		}
@@ -93,22 +125,67 @@ class CharterState extends FlxState
 		{
 			organizeNotes();
 			reloadBeatBars();
+			isWheelMoving = false;
 		}
 
 		if (FlxG.mouse.justPressed)
 		{
-			var quickNoteJson:NoteJson = {
-				note: 0,
-				time: 0,
-				sliderPoints: [0],
-				position: [0, 0]
-			};
+			isHeld = true;
 
-			quickNoteJson.note = Math.floor((FlxG.mouse.x - inputCircles.x + spaceBtwInputs / 2) / (inputSize + spaceBtwInputs));
-			quickNoteJson.time = Math.floor(yPosToTime(FlxG.mouse.y));
+			var clickedNoteJson:NoteJson = null;
 
-			songJson.chart.push(quickNoteJson);
+			for (noteJson in songJson.chart)
+			{
+				var noteEndTime = noteJson.time + noteJson.holdLength;
+				if ((noteJson.time > timeOnMouse && noteJson.time < yPosToTime(FlxG.mouse.y - inputSize) && noteJson.type == typeOnMouse)
+					|| (noteEndTime > timeOnMouse && noteEndTime < yPosToTime(FlxG.mouse.y - inputSize) && noteJson.type == typeOnMouse))
+					clickedNoteJson = noteJson;
+			}
+
+			selectedNoteJson = clickedNoteJson;
+
+			if (selectedNoteJson == null)
+			{
+				var quickNoteJson:NoteJson = {
+					type: 0,
+					holdLength: 0,
+					time: 0,
+					sliderPoints: [0],
+					position: [0, 0]
+				};
+
+				quickNoteJson.type = typeOnMouse;
+				quickNoteJson.time = FlxG.keys.pressed.SHIFT ? timeOnMouse : noteSnap(timeOnMouse);
+
+				songJson.chart.push(quickNoteJson);
+				selectedNoteJson = quickNoteJson;
+				organizeNotes();
+			}
+		}
+
+		if (FlxG.mouse.justReleased)
+		{
+			isHeld = false;
+		}
+
+		if (FlxG.mouse.justMoved)
+		{
+			if (isHeld && selectedNoteJson != null)
+			{
+				selectedNoteJson.holdLength = Math.floor(Math.abs(FlxG.keys.pressed.SHIFT ? timeOnMouse - selectedNoteJson.time : noteSnap(timeOnMouse)
+					- selectedNoteJson.time));
+				organizeNotes();
+			}
+
+			ghostNote.x = inputCircles.x + (typeOnMouse) * (inputSize + spaceBtwInputs);
+			ghostNote.y = FlxG.keys.pressed.SHIFT ? -timeOnMouse + inputCircles.y - inputSize : noteSnap(-timeOnMouse + inputCircles.y - inputSize);
+		}
+
+		if (FlxG.keys.justPressed.DELETE)
+		{
+			selectedNoteJson = null;
 			organizeNotes();
+			trace(123);
 		}
 	}
 
@@ -117,26 +194,32 @@ class CharterState extends FlxState
 	function organizeNotes()
 	{
 		activeNotes.clear();
+		activeNoteLines.clear();
+		activeNoteEnds.clear();
 
 		for (note in songJson.chart)
 		{
 			if (note.time < mil + renderRange && note.time > mil - renderRange)
 			{
-				var modifiedNote = new Note(note.note, note.time, note.sliderPoints, note.position);
+				var modifiedNote = new Note(note, false, Math.floor(inputSize / 2));
 				modifiedNote.setGraphicSize(inputSize, inputSize);
-				modifiedNote.x = note.note * (inputSize + spaceBtwInputs);
+				modifiedNote.updateHitbox();
+				modifiedNote.x = note.type * (inputSize + spaceBtwInputs);
+				modifiedNote.y = timeToYPos(note.time);
+				if (modifiedNote.holdLength > 0)
+				{
+					modifiedNote.holdEndPointer.setGraphicSize(inputSize, inputSize);
+					modifiedNote.holdEndPointer.updateHitbox();
+					modifiedNote.holdEndPointer.x = note.type * (inputSize + spaceBtwInputs);
+					modifiedNote.holdEndPointer.y = timeToYPos(note.time + note.holdLength);
+					activeNoteLines.add(modifiedNote.holdLinePointer);
+					activeNoteEnds.add(modifiedNote.holdEndPointer);
+
+					modifiedNote.updateLine();
+				}
 				activeNotes.add(modifiedNote);
 			}
 		}
-
-		activeNotes.forEachAlive(function(note)
-		{
-			if (note.time > mil + renderRange && note.time < mil - renderRange)
-			{
-				note.kill();
-			}
-			note.y = timeToYPos(note.time);
-		});
 	}
 
 	function reloadBeatBars()
@@ -211,12 +294,17 @@ class CharterState extends FlxState
 
 	function noteSnap(time:Float):Int
 	{
-		return 0;
+		var bpmForTime:BPMJson = {bpm: 120, time: -1};
+		for (bpmObj in songJson.bpmList)
+		{
+			if (bpmObj.time > bpmForTime.time && bpmObj.time < time)
+				bpmForTime = bpmObj;
+		}
+
+		return Math.floor(bpmForTime.time + Math.floor((time - bpmForTime.time) / (6000 / bpmForTime.bpm) + 1) * (6000 / bpmForTime.bpm));
 	}
 
-	// the equasion I came up with
-	// mil - <smallest bpm change from note.time> / (6000 / <smallest bpm change from note.bpm)
-
+	// inputCircles.y -
 	function timeToYPos(time:Float)
 	{
 		return inputCircles.y - (time - mil) * zoom;

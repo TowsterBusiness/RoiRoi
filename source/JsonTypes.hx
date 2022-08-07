@@ -2,7 +2,8 @@ package;
 
 typedef NoteJson =
 {
-	var note:Int;
+	var type:Int;
+	var holdLength:Int;
 	var time:Int;
 	var sliderPoints:Array<Int>;
 	var position:Array<Int>;
@@ -10,7 +11,7 @@ typedef NoteJson =
 
 typedef BPMJson =
 {
-	var bpm:Int;
+	var bpm:Float;
 	var time:Int;
 }
 
